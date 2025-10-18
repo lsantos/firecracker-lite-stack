@@ -1,0 +1,38 @@
+[Unit]
+Description=Firecracker microVM instance %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+EnvironmentFile=/etc/microvm/microvm.env
+ExecStartPre=/usr/sbin/ip tuntap add dev tap%i mode tap user %U || /bin/true
+ExecStartPre=/usr/sbin/ip addr add ${HOST_NET_PREFIX}%i/24 dev tap%i || /bin/true
+ExecStartPre=/usr/sbin/ip link set tap%i up || /bin/true
+
+# Optional: configure NAT to the host
+ExecStartPre=/usr/sbin/iptables -t nat -A POSTROUTING -s ${GUEST_NET_PREFIX}.0/24 -j MASQUERADE || /bin/true
+
+# Write per-instance VM config
+ExecStartPre=/usr/bin/bash -c '/usr/bin/cat > %(run_dir)s/fc-%i.json <<JSON
+{
+  "boot-source": { "kernel_image_path": "${FC_KERNEL}", "boot_args": "console=ttyS0 reboot=k panic=1 pci=off" },
+  "drives": [
+    { "drive_id": "rootfs", "path_on_host": "${FC_ROOTFS}", "is_root_device": true, "is_read_only": false }
+  ],
+  "network-interfaces": [
+    { "iface_id": "eth0", "guest_mac": "02:FC:00:00:00:%i", "host_dev_name": "tap%i" }
+  ],
+  "machine-config": { "vcpu_count": ${VCPUS}, "mem_size_mib": ${MEM_MB} }
+}
+JSON'
+
+ExecStart=${FC_BIN} --no-api --config-file %(run_dir)s/fc-%i.json
+
+ExecStopPost=/usr/sbin/ip link del tap%i || /bin/true
+Restart=always
+User=%U
+RuntimeDirectory=microvm
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target

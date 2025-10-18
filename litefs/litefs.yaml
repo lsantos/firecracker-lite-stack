@@ -1,0 +1,11 @@
+fuse:
+  dir: /litefs
+
+data:
+  dir: /var/lib/litefs
+
+lease:
+  type: "static"
+  candidate: true
+  advertise-url: "http://127.0.0.1:20202"
+  promote: true
